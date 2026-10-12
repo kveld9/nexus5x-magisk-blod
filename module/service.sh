@@ -1,14 +1,14 @@
 #!/system/bin/sh
 # service.sh
-# Applied late in boot (post boot_completed) to ensure Qualcomm init scripts do not overwrite settings.
+# Applied late in boot (post boot_completed) to ensure Qualcomm and Android init scripts do not overwrite settings.
 
 # Wait for boot completion
 while [ "$(getprop sys.boot_completed)" != "1" ]; do
   sleep 1
 done
 
-# Wait for Qualcomm post_boot scripts to finish
-sleep 5
+# Wait for ActivityManager and init.bullhead.rc on property:sys.boot_completed=1 triggers to settle
+sleep 15
 
 # 1. Interactive CPU Governor Optimization (tuned for 4x Cortex-A53 cores)
 CPU0_INTERACTIVE="/sys/devices/system/cpu/cpu0/cpufreq/interactive"
@@ -22,20 +22,32 @@ if [ -d "$CPU0_INTERACTIVE" ]; then
   echo 1 > "$CPU0_INTERACTIVE/io_is_busy"
 fi
 
-# 2. Block I/O Scheduler & Read-Ahead
-if [ -d "/sys/block/mmcblk0/queue" ]; then
-  echo deadline > /sys/block/mmcblk0/queue/scheduler
-  echo 512 > /sys/block/mmcblk0/queue/read_ahead_kb
+# Restrict Qualcomm msm_performance framework strictly to stable cores 0-3
+if [ -f "/sys/module/msm_performance/parameters/managed_cpus" ]; then
+  echo "0-3" > /sys/module/msm_performance/parameters/managed_cpus 2>/dev/null || true
 fi
 
-# 3. Virtual Memory & ZRAM (Expand to 1GB LZ4 compressed swap)
+# 2. Block I/O Subsystem Tuning (Storage & Device Mapper Encrypted Data)
+for blk in /sys/block/mmcblk0 /sys/block/dm-*; do
+  if [ -d "$blk/queue" ]; then
+    echo deadline > "$blk/queue/scheduler" 2>/dev/null || true
+    echo 512 > "$blk/queue/read_ahead_kb" 2>/dev/null || true
+    echo 2 > "$blk/queue/rq_affinity" 2>/dev/null || true
+    echo 0 > "$blk/queue/iostats" 2>/dev/null || true
+  fi
+done
+
+# 3. Virtual Memory & ZRAM (1GB LZ4 compressed swap)
 if [ -b "/dev/block/zram0" ]; then
-  swapoff /dev/block/zram0 2>/dev/null || true
-  echo 1 > /sys/block/zram0/reset 2>/dev/null || true
-  echo lz4 > /sys/block/zram0/comp_algorithm 2>/dev/null || true
-  echo 1073741824 > /sys/block/zram0/disksize 2>/dev/null || true
-  mkswap /dev/block/zram0 2>/dev/null || true
-  swapon /dev/block/zram0 2>/dev/null || true
+  CUR_SIZE=$(cat /sys/block/zram0/disksize 2>/dev/null || echo 0)
+  if [ "$CUR_SIZE" -lt 1000000000 ]; then
+    swapoff /dev/block/zram0 2>/dev/null || true
+    echo 1 > /sys/block/zram0/reset 2>/dev/null || true
+    echo lz4 > /sys/block/zram0/comp_algorithm 2>/dev/null || true
+    echo 1073741824 > /sys/block/zram0/disksize 2>/dev/null || true
+    mkswap /dev/block/zram0 2>/dev/null || true
+    swapon /dev/block/zram0 2>/dev/null || true
+  fi
 fi
 
 echo 100 > /proc/sys/vm/swappiness
@@ -44,7 +56,10 @@ echo 15 > /proc/sys/vm/dirty_ratio
 echo 5 > /proc/sys/vm/dirty_background_ratio
 
 # 4. Low Memory Killer (LMK) Tuning
-# Relax minfree thresholds so background apps are not killed prematurely on a 2GB RAM device
-if [ -f "/sys/module/lowmemorykiller/parameters/minfree" ]; then
-  echo "15360,19200,23040,26880,34560,46080" > /sys/module/lowmemorykiller/parameters/minfree
+# Relax minfree thresholds and protect with read-only permissions against ActivityManager resets
+LMK_MINFREE="/sys/module/lowmemorykiller/parameters/minfree"
+if [ -f "$LMK_MINFREE" ]; then
+  chmod 664 "$LMK_MINFREE" 2>/dev/null || true
+  echo "15360,19200,23040,26880,34560,46080" > "$LMK_MINFREE"
+  chmod 444 "$LMK_MINFREE" 2>/dev/null || true
 fi
