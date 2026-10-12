@@ -79,3 +79,31 @@ adb shell "magisk -v"
 # Check su binary location
 adb shell "which su"
 ```
+
+---
+
+## 5. Kernel & VM Performance Optimization Module
+
+Running on exclusively 4x Cortex-A53 cores (with the high-performance Cortex-A57 cluster disabled) introduces significant UI latencies and memory bottlenecks under default stock settings. The included Magisk module (`module/`) automates runtime sysfs tunings applied post-boot (`service.sh`):
+
+### Tuned Parameters
+1. **Interactive CPU Governor**:
+   - `go_hispeed_load`: lowered from `99` to `85` to eliminate touch input stutter and ramp frequencies earlier.
+   - `hispeed_freq`: raised from `960000` to `1248000` for responsive app launches.
+   - `target_loads`: `70 600000:80 960000:85 1248000:90` for smooth progressive scaling.
+   - `io_is_busy`: set to `1` to account for disk I/O in frequency selection.
+2. **Block I/O Subsystem**:
+   - Scheduler: switched to `deadline` on `/sys/block/mmcblk0/queue/scheduler`.
+   - Read-ahead: increased from `128` to `512 KB` for improved sequential app/dex load throughput.
+3. **Virtual Memory & ZRAM Swapping**:
+   - ZRAM disksize: doubled from 512MB to **1024 MB (1 GB)** with `lz4` compression.
+   - `swappiness`: increased to `100` to prioritize swapping cold anonymous pages into compressed RAM over discarding file-backed caches.
+   - `vfs_cache_pressure`: set to `80` to retain directory/inode metadata.
+4. **Low Memory Killer (LMK)**:
+   - `minfree`: relaxed from `18432,23040,27648,32256,55296,80640` (which killed background apps at 315MB free) to `15360,19200,23040,26880,34560,46080` to preserve background apps in memory.
+
+### Installation
+```bash
+./scripts/install_module.sh YOUR_DEVICE_SERIAL
+```
+
