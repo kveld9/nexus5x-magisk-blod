@@ -1,6 +1,9 @@
 *.img
+*.zip
 *.bak
 *.orig
 *.log
 work/
 work_magisk/
+work_zip/
+
