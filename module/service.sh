@@ -30,6 +30,7 @@ fi
 # 2. Block I/O Subsystem Tuning (Storage & Device Mapper Encrypted Data)
 for blk in /sys/block/mmcblk0 /sys/block/dm-*; do
   if [ -d "$blk/queue" ]; then
+    chmod 644 "$blk/queue/scheduler" "$blk/queue/read_ahead_kb" 2>/dev/null || true
     echo deadline > "$blk/queue/scheduler" 2>/dev/null || true
     echo 512 > "$blk/queue/read_ahead_kb" 2>/dev/null || true
     echo 2 > "$blk/queue/rq_affinity" 2>/dev/null || true
