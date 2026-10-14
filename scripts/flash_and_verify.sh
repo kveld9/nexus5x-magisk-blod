@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="${1:-${SCRIPT_DIR}/../boot_magisk_4core.img}"
-DEVICE_SERIAL="${2:-YOUR_DEVICE_SERIAL}"
+DEVICE_SERIAL="${2:?Usage: $0 [boot-image] <device-serial>}"
 
 if [[ ! -f "${IMAGE}" ]]; then
   echo "Error: Boot image not found: ${IMAGE}" >&2
